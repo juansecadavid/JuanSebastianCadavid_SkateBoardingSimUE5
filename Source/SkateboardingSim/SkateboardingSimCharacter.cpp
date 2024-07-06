@@ -59,6 +59,7 @@ void ASkateboardingSimCharacter::BeginPlay()
 	// Call the base class  
 	Super::BeginPlay();
 
+	SkateBoard = Cast<UStaticMeshComponent>(GetDefaultSubobjectByName(TEXT("SkateStaticMesh")));
 	//Add Input Mapping Context
 	if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
 	{

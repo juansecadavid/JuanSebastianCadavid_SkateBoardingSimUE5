@@ -44,6 +44,13 @@ class ASkateboardingSimCharacter : public ACharacter
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* LookAction;
 
+	/** Push Input Action */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
+	UInputAction* BoostAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "SkatingTools", meta = (AllowPrivateAccess = "true") )
+	UStaticMeshComponent* SkateBoard;
+
 public:
 	ASkateboardingSimCharacter();
 	
