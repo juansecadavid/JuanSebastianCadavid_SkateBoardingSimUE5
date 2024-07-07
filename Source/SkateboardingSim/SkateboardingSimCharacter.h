@@ -61,9 +61,20 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Input")
 	FVector2D GetUserMyInputs() const;
 
+	UFUNCTION(BlueprintCallable, Category = "SlowDown")
+	void SlowDownTime();
+	
+	UPROPERTY(BlueprintReadOnly)
+	bool isBoosting = false;
+
+	UPROPERTY(BlueprintReadWrite)
+	bool isJumping = false;
+
 protected:
 
-	void StartMove();
+	void StartMove(const FInputActionValue& Value);
+
+	void StartJumping();
 	
 	/** Called for movement input */
 	void Move(const FInputActionValue& Value);
@@ -73,17 +84,30 @@ protected:
 
 	void StopMove();
 
+	void AdjustRotationToSlope(float DeltaTime);
+
+	void RestoreNormalSpeed();
+	
+	void ApplySlidingForce();
+
 	// Variables para almacenar los valores de movimiento
 	float MoveForwardValue;
 	float MoveRightValue;
 	float CurrentForwardSpeed;
 	float MF_Value = 0.0f;
+	float TargetSkateVelocity = 0.0f;
+
+	// Timer handle for slow motion effect
+	FTimerHandle TimerHandle_SlowMotion;
+
 protected:
 	// APawn interface
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	
 	// To add mapping context
 	virtual void BeginPlay();
+
+	virtual void Tick(float DeltaSeconds) override;
 
 public:
 	/** Returns CameraBoom subobject **/

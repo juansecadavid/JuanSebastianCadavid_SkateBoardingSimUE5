@@ -10,6 +10,7 @@
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
+#include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetMathLibrary.h"
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
@@ -74,6 +75,28 @@ void ASkateboardingSimCharacter::BeginPlay()
 			Subsystem->AddMappingContext(DefaultMappingContext, 0);
 		}
 	}
+	
+	// Obtener la inclinación del plano
+	FVector FloorNormal = GetCharacterMovement()->CurrentFloor.HitResult.ImpactNormal;
+	float FloorAngle = FMath::RadiansToDegrees(FMath::Acos(FloorNormal.Z));
+
+	// Aplicar fuerza adicional si el personaje está en una pendiente
+	if (FloorAngle > 0)
+	{
+		FVector SlideDirection = FVector(FloorNormal.X, FloorNormal.Y, 0.0f).GetSafeNormal();
+		FVector Force = SlideDirection * 2000.0f; // Ajusta este valor según sea necesario
+		GetCharacterMovement()->AddForce(Force);
+	}
+}
+void ASkateboardingSimCharacter::Tick(float DeltaSeconds)
+{
+	const FVector ForwardDirection = SkateBoard->GetRightVector();
+	MF_Value = FMath::Lerp(MF_Value, TargetSkateVelocity, 0.01f);
+
+	AddMovementInput(ForwardDirection, MF_Value);
+	ApplySlidingForce();
+	AdjustRotationToSlope(DeltaSeconds);
+	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Yellow,FString::Printf( TEXT("Supone que hay pendiente: %f"),GetCharacterMovement()->GroundFriction));
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -85,6 +108,7 @@ void ASkateboardingSimCharacter::SetupPlayerInputComponent(UInputComponent* Play
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent)) {
 		
 		// Jumping
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ASkateboardingSimCharacter::StartJumping);
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
 
@@ -109,25 +133,15 @@ void ASkateboardingSimCharacter::Move(const FInputActionValue& Value)
 
 	if (Controller != nullptr)
 	{
-		// find out which way is forward
 		const FRotator Rotation = Controller->GetControlRotation();
 		const FRotator YawRotation(0, Rotation.Yaw, 0);
-
-		// get forward vector
-		//const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
-		const FVector ForwardDirection = SkateBoard->GetRightVector();
-	
-		// get right vector 
-		//const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 		const FVector RightDirection = SkateBoard->GetForwardVector();
-		
-		//MF_Value = FMath::Lerp(MF_Value, MovementVector.Y,0.01f);
-		MF_Value = FMath::Lerp(MF_Value, MovementVector.Y, 0.01f);
+
+		TargetSkateVelocity = MovementVector.Y;
         
 
 		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green, FString::Printf(TEXT("MoveForwardValue: %f"), MF_Value));
 		// add movement 
-		AddMovementInput(ForwardDirection, MF_Value);
 		AddMovementInput(RightDirection, MovementVector.X*0.02f);
 
 		MoveForwardValue = MovementVector.Y;
@@ -153,15 +167,108 @@ FVector2D ASkateboardingSimCharacter::GetUserMyInputs() const
 	return FVector2D(MoveForwardValue, MoveRightValue);
 }
 
-void ASkateboardingSimCharacter::StartMove()
+void ASkateboardingSimCharacter::StartMove(const FInputActionValue& Value)
 {
-	// Function that is called only once when the move input is first pressed
+	FVector2D MovementVector = Value.Get<FVector2D>();
 	UE_LOG(LogTemplateCharacter, Log, TEXT("Move input started"));
 	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Yellow, TEXT("Move input started"));
+	if(MovementVector.Y!=0)
+	{
+		if(MovementVector.Y<0)
+			isBoosting = true;
+		GetCharacterMovement()->BrakingDecelerationWalking = 3000.f;
+		GetCharacterMovement()->GroundFriction = 8.0f;
+	}
 }
 
 void ASkateboardingSimCharacter::StopMove()
 {
 	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Yellow, TEXT("Move input finished"));
+	TargetSkateVelocity = 0.0f;
+	isBoosting = false;
 	//MF_Value = 0.0f;
 }
+void ASkateboardingSimCharacter::StartJumping()
+{
+	isJumping = false;
+	isJumping = true;
+	
+}
+
+void ASkateboardingSimCharacter::SlowDownTime()
+{
+	UGameplayStatics::SetGlobalTimeDilation(GetWorld(), 0.3f);
+	GetWorldTimerManager().SetTimer(TimerHandle_SlowMotion, this, &ASkateboardingSimCharacter::RestoreNormalSpeed, 0.5f, false);
+}
+
+
+void ASkateboardingSimCharacter::RestoreNormalSpeed()
+{
+	UGameplayStatics::SetGlobalTimeDilation(GetWorld(), 1.0f);
+}
+
+void ASkateboardingSimCharacter::ApplySlidingForce()
+{
+	if (!isBoosting) // Solo aplicar la fuerza de deslizamiento si no se están presionando los botones de movimiento
+	{
+		FVector FloorNormal = GetCharacterMovement()->CurrentFloor.HitResult.ImpactNormal;
+        
+		// Si la pendiente es suficientemente inclinada, aplicar fuerza de deslizamiento
+		if (FloorNormal.Z < 1.0f)  // 1.0f significa completamente plano, menor es una pendiente
+		{
+			GetCharacterMovement()->BrakingDecelerationWalking = 100.f;
+			GetCharacterMovement()->GroundFriction = 1.0f;
+			FVector Gravity = FVector(0.0f, 0.0f, -980.0f);  // Gravedad estándar en Unreal Engine
+			FVector GravityParallel = Gravity - (FloorNormal * FVector::DotProduct(Gravity, FloorNormal));  // Componente paralela de la gravedad
+			FVector SlideDirection = GravityParallel.GetSafeNormal();
+
+			// Aplicar fuerza de deslizamiento
+			GetCharacterMovement()->AddForce(SlideDirection * GetCharacterMovement()->Mass * 300.0f);  // Ajusta el multiplicador según sea necesario
+		}
+	}
+}
+
+void ASkateboardingSimCharacter::AdjustRotationToSlope(float DeltaTime)
+{
+	// Obtener la normal del suelo
+	FVector FloorNormal = GetCharacterMovement()->CurrentFloor.HitResult.ImpactNormal;
+
+	// Si la normal del suelo es válida
+	if (FloorNormal.Z < 1.0f)
+	{
+		// Calcular la nueva rotación basada en la normal del suelo
+		FRotator TargetSlopeRotation = FRotationMatrix::MakeFromZX(FloorNormal, GetActorForwardVector()).Rotator();
+
+		// Determinar la dirección del movimiento
+		FVector ForwardVector = GetActorForwardVector();
+		FVector MovementDirection = GetVelocity().GetSafeNormal();
+
+		// Proyectar el vector de movimiento en el plano de la pendiente
+		FVector ProjectedMovement = FVector::VectorPlaneProject(MovementDirection, FloorNormal);
+
+		// Determinar si el personaje está subiendo o bajando
+		float DotProduct = FVector::DotProduct(ForwardVector, ProjectedMovement);
+		bool bIsMovingUpSlope = DotProduct > 0;
+
+		// Agregar un offset adicional a la rotación objetivo
+		float RotationOffsetPitch = 130.0f; // Ajusta este valor para cambiar el offset en el eje de inclinación (pitch)
+
+		if (bIsMovingUpSlope)
+		{
+			TargetSlopeRotation.Pitch += RotationOffsetPitch;
+		}
+		else
+		{
+			TargetSlopeRotation.Pitch -= RotationOffsetPitch;
+		}
+
+		// Interpolar entre la rotación actual y la rotación objetivo
+		FRotator NewRotation = FMath::RInterpTo(GetActorRotation(), TargetSlopeRotation, DeltaTime, 5.0f); // Ajusta el valor 5.0f para cambiar la velocidad de la interpolación
+
+		// Aplicar la nueva rotación al personaje
+		SetActorRotation(NewRotation);
+	}
+}
+
+
+
