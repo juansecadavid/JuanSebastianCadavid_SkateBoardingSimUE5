@@ -50,20 +50,34 @@ class ASkateboardingSimCharacter : public ACharacter
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "SkatingTools", meta = (AllowPrivateAccess = "true") )
 	UStaticMeshComponent* SkateBoard;
+	//USkeletalMeshComponent* SkateBoard;
+
+
+	
 
 public:
 	ASkateboardingSimCharacter();
-	
+	// Función para obtener las entradas del usuario
+	UFUNCTION(BlueprintCallable, Category = "Input")
+	FVector2D GetUserMyInputs() const;
 
 protected:
 
+	void StartMove();
+	
 	/** Called for movement input */
 	void Move(const FInputActionValue& Value);
 
 	/** Called for looking input */
 	void Look(const FInputActionValue& Value);
-			
 
+	void StopMove();
+
+	// Variables para almacenar los valores de movimiento
+	float MoveForwardValue;
+	float MoveRightValue;
+	float CurrentForwardSpeed;
+	float MF_Value = 0.0f;
 protected:
 	// APawn interface
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;

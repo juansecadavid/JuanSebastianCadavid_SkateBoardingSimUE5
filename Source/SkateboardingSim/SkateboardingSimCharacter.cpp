@@ -10,6 +10,7 @@
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
+#include "Kismet/KismetMathLibrary.h"
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
@@ -18,6 +19,11 @@ DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
 ASkateboardingSimCharacter::ASkateboardingSimCharacter()
 {
+	//CustomRootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("CustomRootComponent"));
+	//RootComponent = CustomRootComponent;
+
+	// Mover el CapsuleComponent para que ya no sea el componente raíz
+	//GetCapsuleComponent()->SetupAttachment(CustomRootComponent);
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
 		
@@ -83,7 +89,9 @@ void ASkateboardingSimCharacter::SetupPlayerInputComponent(UInputComponent* Play
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
 
 		// Moving
+		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Started, this, &ASkateboardingSimCharacter::StartMove);
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ASkateboardingSimCharacter::Move);
+		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Completed, this, &ASkateboardingSimCharacter::StopMove);
 
 		// Looking
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ASkateboardingSimCharacter::Look);
@@ -106,14 +114,24 @@ void ASkateboardingSimCharacter::Move(const FInputActionValue& Value)
 		const FRotator YawRotation(0, Rotation.Yaw, 0);
 
 		// get forward vector
-		const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+		//const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+		const FVector ForwardDirection = SkateBoard->GetRightVector();
 	
 		// get right vector 
-		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+		//const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+		const FVector RightDirection = SkateBoard->GetForwardVector();
+		
+		//MF_Value = FMath::Lerp(MF_Value, MovementVector.Y,0.01f);
+		MF_Value = FMath::Lerp(MF_Value, MovementVector.Y, 0.01f);
+        
 
+		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green, FString::Printf(TEXT("MoveForwardValue: %f"), MF_Value));
 		// add movement 
-		AddMovementInput(ForwardDirection, MovementVector.Y);
-		AddMovementInput(RightDirection, MovementVector.X);
+		AddMovementInput(ForwardDirection, MF_Value);
+		AddMovementInput(RightDirection, MovementVector.X*0.02f);
+
+		MoveForwardValue = MovementVector.Y;
+		MoveRightValue = MovementVector.X;
 	}
 }
 
@@ -128,4 +146,22 @@ void ASkateboardingSimCharacter::Look(const FInputActionValue& Value)
 		AddControllerYawInput(LookAxisVector.X);
 		AddControllerPitchInput(LookAxisVector.Y);
 	}
+}
+
+FVector2D ASkateboardingSimCharacter::GetUserMyInputs() const
+{
+	return FVector2D(MoveForwardValue, MoveRightValue);
+}
+
+void ASkateboardingSimCharacter::StartMove()
+{
+	// Function that is called only once when the move input is first pressed
+	UE_LOG(LogTemplateCharacter, Log, TEXT("Move input started"));
+	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Yellow, TEXT("Move input started"));
+}
+
+void ASkateboardingSimCharacter::StopMove()
+{
+	GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Yellow, TEXT("Move input finished"));
+	//MF_Value = 0.0f;
 }
